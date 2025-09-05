@@ -1,2 +1,7 @@
-/build/
-/dist
+dist/
+# Ignore all .pyc files
+*.pyc
+
+# Ignore the build folder and everything inside
+build/
+
