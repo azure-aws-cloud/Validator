@@ -11,20 +11,14 @@ def browse_folder():
         folder_var.set(folder_path)
 
 def get_ethernet_mac_address():
-    """
-    Get MAC address of the first physical Ethernet interface.
-    Filters out virtual, loopback, and wireless interfaces.
-    """
     try:
         for interface in netifaces.interfaces():
-            # Skip non-physical interfaces
             if any(bad in interface.lower() for bad in ['loopback', 'wifi', 'wlan', 'vmware', 'virtual', 'bluetooth']):
                 continue
             addrs = netifaces.ifaddresses(interface)
             if netifaces.AF_LINK in addrs:
                 mac = addrs[netifaces.AF_LINK][0].get('addr')
                 if mac and len(mac.split(":")) == 6 and not mac.startswith("00:00:00"):
-                    # Format MAC (uppercase, dashes)
                     return re.sub(r"[:]", "-", mac.upper())
     except Exception:
         return None
@@ -32,13 +26,9 @@ def get_ethernet_mac_address():
 
 def insert_message(text, tag):
     output_text.insert(tk.END, text + "\n", tag)
-    output_text.see(tk.END)  # Scroll to bottom
+    output_text.see(tk.END)
 
 def check_eaton_attribute(xml_file_path):
-    """
-    Check if any element has UPSName attribute starting with 'eaton' (case-insensitive).
-    Returns True if found, else False.
-    """
     try:
         tree = ET.parse(xml_file_path)
         root = tree.getroot()
@@ -54,6 +44,20 @@ def check_eaton_attribute(xml_file_path):
     except Exception as e:
         insert_message(f"[ERROR] Unexpected error checking XML file:\n{xml_file_path}\n{e}", "error")
         return False
+
+def check_skip_objects_txt(file_path):
+    try:
+        if not os.path.exists(file_path):
+            insert_message(f"[ERROR] File 'skipObjects.txt' not found at:\n{file_path}", "error")
+            return
+        with open(file_path, 'r') as f:
+            lines = [line.strip() for line in f if line.strip()]
+            if lines:
+                insert_message(f"[VALID] skipObjects.txt contains {len(lines)} non-empty line(s).", "success")
+            else:
+                insert_message("[ERROR] skipObjects.txt exists but is empty.", "error")
+    except Exception as e:
+        insert_message(f"[ERROR] Failed to read skipObjects.txt:\n{e}", "error")
 
 def validate_folder():
     output_text.delete(1.0, tk.END)
@@ -107,7 +111,7 @@ def validate_folder():
 
     output_text.insert(tk.END, "\n")
 
-    # === Step 3: Check install/pre_scripts/EDAT_CustomAttributesEDATMigration.xml for UPSName starting with 'eaton' ===
+    # === Step 3: Check install/pre_scripts/EDAT_CustomAttributesEDATMigration.xml ===
     pre_scripts_dir = os.path.join(folder_path, "install", "pre_scripts")
     migration_xml = os.path.join(pre_scripts_dir, "EDAT_CustomAttributesEDATMigration.xml")
 
@@ -121,6 +125,12 @@ def validate_folder():
             insert_message("[FOUND] UPSName attribute starting with 'eaton' found in EDAT_CustomAttributesEDATMigration.xml", "success")
         else:
             insert_message("[NOT FOUND] No UPSName attribute starting with 'eaton' found in EDAT_CustomAttributesEDATMigration.xml", "error")
+
+    output_text.insert(tk.END, "\n")
+
+    # === Step 4: Check config/skipObjects.txt ===
+    skip_objects_path = os.path.join(folder_path, "config", "skipObjects.txt")
+    check_skip_objects_txt(skip_objects_path)
 
 def clear_messages():
     output_text.delete(1.0, tk.END)
