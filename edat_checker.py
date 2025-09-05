@@ -1,11 +1,9 @@
-# edat_checker.py
-
 import os
+import re
 import tkinter as tk
 from tkinter import filedialog
 import xml.etree.ElementTree as ET
 import netifaces
-import re
 
 def browse_folder():
     folder_path = filedialog.askdirectory()
@@ -19,13 +17,14 @@ def get_ethernet_mac_address():
     """
     try:
         for interface in netifaces.interfaces():
+            # Skip non-physical interfaces
             if any(bad in interface.lower() for bad in ['loopback', 'wifi', 'wlan', 'vmware', 'virtual', 'bluetooth']):
                 continue
-
             addrs = netifaces.ifaddresses(interface)
             if netifaces.AF_LINK in addrs:
                 mac = addrs[netifaces.AF_LINK][0].get('addr')
                 if mac and len(mac.split(":")) == 6 and not mac.startswith("00:00:00"):
+                    # Format MAC (uppercase, dashes)
                     return re.sub(r"[:]", "-", mac.upper())
     except Exception:
         return None
@@ -33,6 +32,28 @@ def get_ethernet_mac_address():
 
 def insert_message(text, tag):
     output_text.insert(tk.END, text + "\n", tag)
+    output_text.see(tk.END)  # Scroll to bottom
+
+def check_eaton_attribute(xml_file_path):
+    """
+    Check if any element has UPSName attribute starting with 'eaton' (case-insensitive).
+    Returns True if found, else False.
+    """
+    try:
+        tree = ET.parse(xml_file_path)
+        root = tree.getroot()
+
+        for elem in root.iter():
+            upsname = elem.attrib.get("UPSName")
+            if upsname and upsname.lower().startswith("eaton"):
+                return True
+        return False
+    except ET.ParseError:
+        insert_message(f"[ERROR] Failed to parse XML file:\n{xml_file_path}", "error")
+        return False
+    except Exception as e:
+        insert_message(f"[ERROR] Unexpected error checking XML file:\n{xml_file_path}\n{e}", "error")
+        return False
 
 def validate_folder():
     output_text.delete(1.0, tk.END)
@@ -84,6 +105,23 @@ def validate_folder():
     else:
         insert_message(f"[VALID] License file '{lic_file_name}' found and valid.", "success")
 
+    output_text.insert(tk.END, "\n")
+
+    # === Step 3: Check install/pre_scripts/EDAT_CustomAttributesEDATMigration.xml for UPSName starting with 'eaton' ===
+    pre_scripts_dir = os.path.join(folder_path, "install", "pre_scripts")
+    migration_xml = os.path.join(pre_scripts_dir, "EDAT_CustomAttributesEDATMigration.xml")
+
+    if not os.path.exists(pre_scripts_dir):
+        insert_message(f"[ERROR] 'install\\pre_scripts' folder not found at:\n{pre_scripts_dir}", "error")
+    elif not os.path.isfile(migration_xml):
+        insert_message(f"[ERROR] File 'EDAT_CustomAttributesEDATMigration.xml' not found in:\n{pre_scripts_dir}", "error")
+    else:
+        has_eaton_upsname = check_eaton_attribute(migration_xml)
+        if has_eaton_upsname:
+            insert_message("[FOUND] UPSName attribute starting with 'eaton' found in EDAT_CustomAttributesEDATMigration.xml", "success")
+        else:
+            insert_message("[NOT FOUND] No UPSName attribute starting with 'eaton' found in EDAT_CustomAttributesEDATMigration.xml", "error")
+
 def clear_messages():
     output_text.delete(1.0, tk.END)
 
@@ -121,5 +159,4 @@ output_text.tag_configure("success", foreground="green")
 clear_button = tk.Button(app, text="Clear Messages", command=clear_messages)
 clear_button.grid(row=2, column=2, padx=10, pady=5, sticky="e")
 
-# Start the GUI loop
 app.mainloop()
